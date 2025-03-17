@@ -75,6 +75,7 @@ contract StorageMarket is IStorageMarket{
         
         require(agreement.user == msg.sender, "Not agreement owner");
         require(agreement.active, "Agreement not active");
+        require(!isAgreementExpired(agreementId), "Agreement has expired");
         require(bytes(agreement.fileReference).length == 0, "File already stored");
         
         agreement.fileReference = fileReference;
@@ -82,6 +83,7 @@ contract StorageMarket is IStorageMarket{
         emit FileStored(agreementId, fileReference);
     }
     
+    /// @param agreementId - ID of the agreement
     function terminateAgreement(uint256 agreementId) external override {
         StorageAgreement storage agreement = agreements[agreementId];
         
@@ -98,8 +100,49 @@ contract StorageMarket is IStorageMarket{
         
         emit AgreementTerminated(agreementId);
     }
-    
+
+    /// @param agreementId - ID of the agreement
+    function terminateExpiredAgreement(uint256 agreementId) external {
+        StorageAgreement storage agreement = agreements[agreementId];
+        
+        require(agreement.provider == msg.sender, "Only provider can terminate expired agreements");
+        require(agreement.active, "Agreement already terminated");
+        require(isAgreementExpired(agreementId), "Agreement has not expired yet");
+        
+        agreement.active = false;
+        StorageNode(nodeRegistry).updateAvailableSpace(agreement.provider, agreement.size, true);
+        
+        emit AgreementTerminated(agreementId);
+    }
+
+    /// @param agreementId - ID of the agreement
+    /// @param additionalMonths - duration to extend the agreement in months
+    /// @param amount - amount for full duration
+    function extendAgreement(uint256 agreementId, uint256 additionalMonths, uint256 amount) external {
+        StorageAgreement storage agreement = agreements[agreementId];
+        
+        require(agreement.user == msg.sender, "Not agreement owner");
+        require(agreement.active, "Agreement not active");
+        
+        IStorageNode.NodeInfo memory nodeInfo = nodeRegistry.getNodeDetails(agreement.provider);
+        uint256 additionalPrice = agreement.size * nodeInfo.pricePerGB * additionalMonths;
+        
+        require(amount >= additionalPrice, "Insufficient payment");
+        
+        agreement.duration += additionalMonths;
+        agreement.price += additionalPrice;
+        
+        MockUSDT.transferFrom(msg.sender, address(this), amount);
+        
+        emit AgreementExtended(agreementId, additionalMonths, additionalPrice);
+    }
+
     ////////////////////view functions ///////////////////////
+    function isAgreementExpired(uint256 agreementId) public view returns (bool) {
+        StorageAgreement storage agreement = agreements[agreementId];
+        return block.timestamp > agreement.startTime + (agreement.duration * 30 days);
+    }
+    
     function getAgreement(uint256 agreementId) external view override returns (StorageAgreement memory) {
         return agreements[agreementId];
     }
