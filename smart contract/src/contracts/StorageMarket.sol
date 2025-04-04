@@ -137,6 +137,7 @@ contract StorageMarket is IStorageMarket{
         emit AgreementExtended(agreementId, additionalMonths, additionalPrice);
     }
 
+
     ////////////////////view functions ///////////////////////
     function isAgreementExpired(uint256 agreementId) public view returns (bool) {
         StorageAgreement storage agreement = agreements[agreementId];
